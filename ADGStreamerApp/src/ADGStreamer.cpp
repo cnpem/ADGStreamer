@@ -9,11 +9,9 @@ ADGStreamer::ADGStreamer(const char *portName, int maxBuffers, size_t maxMemory,
 {
     initializeGStreamer();
 
-    epicsThreadCreate("ADGSTAcquire",
-                            epicsThreadPriorityMedium,
-                            epicsThreadGetStackSize(epicsThreadStackMedium),
-                            (EPICSTHREADFUNC)acquisitionTaskC,
-                            this);
+    epicsThreadCreate("ADGSTAcquire", epicsThreadPriorityMedium,
+        epicsThreadGetStackSize(epicsThreadStackMedium),
+        (EPICSTHREADFUNC)acquisitionTaskC, this);
 }
 
 ADGStreamer::~ADGStreamer() { stopPipeline(); }
@@ -45,17 +43,13 @@ void ADGStreamer::acquisitionTask()
     epicsTimeStamp startTime, endTime;
     double elapsedTime, delay;
 
-    while (true)
-    {
+    while (true) {
         epicsTimeGetCurrent(&startTime);
 
         lock();
         getIntegerParam(ADAcquire, &acquire);
-        if (acquire)
-        {
-        }
-        else
-        {
+        if (acquire) {
+            processBusMessage();
         }
         unlock();
 
@@ -124,6 +118,11 @@ bool ADGStreamer::stopPipeline()
         sink_ = nullptr;
     }
 
+    if (bus_) {
+        gst_object_unref(bus_);
+        bus_ = nullptr;
+    }
+
     if (pipeline_) {
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
@@ -154,6 +153,11 @@ bool ADGStreamer::createPipeline()
     }
 
     if (error) {
+        return false;
+    }
+
+    bus_ = gst_element_get_bus(pipeline_);
+    if (!bus_) {
         return false;
     }
 
@@ -322,6 +326,52 @@ bool ADGStreamer::updateSample(GstCaps *caps)
 
     callParamCallbacks();
 
+    return true;
+}
+
+bool ADGStreamer::processBusMessage()
+{
+    if (!bus_) {
+        return false;
+    }
+
+    GstMessage *message;
+    while ((message = gst_bus_pop(bus_)) != nullptr) {
+        switch (GST_MESSAGE_TYPE(message)) {
+        case GST_MESSAGE_ERROR: {
+            GError *error = nullptr;
+            gchar *debug = nullptr;
+            gst_message_parse_error(message, &error, &debug);
+            if (error) {
+                g_error_free(error);
+            }
+            if (debug) {
+                g_free(debug);
+            }
+            break;
+        }
+
+        case GST_MESSAGE_EOS: {
+            break;
+        }
+
+        case GST_MESSAGE_STATE_CHANGED: {
+            if (GST_MESSAGE_SRC(message) == GST_OBJECT(pipeline_)) {
+                GstState oldState;
+                GstState newState;
+                GstState pendingState;
+                gst_message_parse_state_changed(
+                    message, &oldState, &newState, &pendingState);
+            }
+
+            break;
+        }
+
+        default:
+            break;
+        }
+        gst_message_unref(message);
+    }
     return true;
 }
 

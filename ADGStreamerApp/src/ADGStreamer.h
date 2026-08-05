@@ -36,14 +36,19 @@ private:
     bool processSample(GstSample *sample);
     bool updateSample(GstCaps *caps);
 
+    bool processBusMessage();
+
     GstElement *pipeline_;
     GstElement *sink_;
+    GstBus *bus_;
 
     bool firstSample_;
 
     int ndims_;
     size_t dims_[3];
     NDDataType_t dataType_;
+
+    PipelineBuilder *pipelineBuilder_;
 };
 
 #endif
