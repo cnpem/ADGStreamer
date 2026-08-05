@@ -1,0 +1,14 @@
+services:
+  ioc:
+    image: ghcr.io/cnpem/adgstreamer
+    build:
+      context: ./
+      dockerfile: docker/Dockerfile
+      target: dynamic-link
+      labels:
+        org.opencontainers.image.source: https://github.com/cnpem/ADGStreamer
+      args:
+        BUILD_PACKAGES: libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+        RUNTIME_PACKAGES: libxml2 libtiff6 gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
+        REPONAME: ADGStreamer
+        RUNDIR: /opt/ADGStreamer/iocs/ADGStreamerIOC/iocBoot/iocADGStreamer
