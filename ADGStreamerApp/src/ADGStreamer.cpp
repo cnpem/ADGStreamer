@@ -10,12 +10,156 @@ ADGStreamer::ADGStreamer(const char *portName, int maxBuffers, size_t maxMemory,
     initializeGStreamer();
 }
 
-ADGStreamer::~ADGStreamer() { }
+ADGStreamer::~ADGStreamer() { stopPipeline(); }
+
+asynStatus ADGStreamer::writeInt32(asynUser *pasynUser, epicsInt32 value)
+{
+    int function = pasynUser->reason;
+
+    if (function == ADAcquire) {
+        if (value) {
+            startPipeline();
+        } else {
+            stopPipeline();
+        }
+    }
+
+    return ADDriver::writeInt32(pasynUser, value);
+}
 
 bool ADGStreamer::initializeGStreamer()
 {
     gst_init(nullptr, nullptr);
     return true;
+}
+
+bool ADGStreamer::startPipeline()
+{
+    if (pipeline_) {
+        return false;
+    }
+
+    if (!createPipeline()) {
+        return false;
+    }
+
+    GstStateChangeReturn ret;
+    ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
+
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+        return false;
+    }
+
+    GstState state;
+    gst_element_get_state(pipeline_, &state, nullptr, GST_CLOCK_TIME_NONE);
+
+    if (state != GST_STATE_PLAYING) {
+        return false;
+    }
+
+    return true;
+}
+
+bool ADGStreamer::stopPipeline()
+{
+    if (pipeline_) {
+        GstStateChangeReturn ret;
+        ret = gst_element_set_state(pipeline_, GST_STATE_NULL);
+
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            return false;
+        }
+
+        GstState state;
+        gst_element_get_state(pipeline_, &state, nullptr, GST_CLOCK_TIME_NONE);
+
+        if (state != GST_STATE_NULL) {
+            return false;
+        }
+    }
+
+    if (sink_) {
+        gst_object_unref(sink_);
+        sink_ = nullptr;
+    }
+
+    if (pipeline_) {
+        gst_object_unref(pipeline_);
+        pipeline_ = nullptr;
+    }
+
+    return true;
+}
+
+bool ADGStreamer::createPipeline()
+{
+    std::string pipeline
+        = std::string("rtspsrc "
+                      "location=rtsp://admin:r00tr00t@10.20.21.40:554/cam/"
+                      "realmonitor?channel=1&subtype=0 protocols=udp latency=0 "
+                      "drop-on-latency=true")
+        + std::string(" ! rtph264depay ! h264parse config-interval=-1")
+        + std::string(
+            " ! queue max-size-buffers=1 leaky=downstream silent=true")
+        + std::string(" ! avdec_h264 ! videoconvert ! video/x-raw,format=RGB ! "
+                      "appsink name=appsink sync=false");
+
+    GError *error = nullptr;
+    pipeline_ = gst_parse_launch(pipeline.c_str(), &error);
+
+    if (!pipeline_) {
+        if (error) { }
+        return false;
+    }
+
+    if (error) {
+        return false;
+    }
+
+    sink_ = gst_bin_get_by_name(GST_BIN(pipeline_), "appsink");
+
+    if (!sink_) {
+        return false;
+    }
+
+    gst_app_sink_set_emit_signals(GST_APP_SINK(sink_), true);
+    gst_app_sink_set_drop(GST_APP_SINK(sink_), true);
+    gst_app_sink_set_max_buffers(GST_APP_SINK(sink_), 1);
+
+    g_signal_connect(
+        sink_, "new-sample", G_CALLBACK(onNewSampleCallback), this);
+
+    return true;
+}
+
+GstFlowReturn ADGStreamer::onNewSampleCallback(
+    GstAppSink *sink, gpointer userData)
+{
+    ADGStreamer *pPvt = static_cast<ADGStreamer *>(userData);
+    return pPvt->onNewSample();
+}
+
+GstFlowReturn ADGStreamer::onNewSample()
+{
+    GstSample *sample = nullptr;
+
+    lock();
+
+    if (!sink_) {
+        return GST_FLOW_ERROR;
+    }
+
+    sample = gst_app_sink_pull_sample(GST_APP_SINK(sink_));
+
+    if (!sample) {
+        return GST_FLOW_ERROR;
+    }
+
+    gst_sample_unref(sample);
+
+    unlock();
+
+    return GST_FLOW_OK;
 }
 
 extern "C" int ADGStreamerDrive(const char *portName, int maxBuffers,

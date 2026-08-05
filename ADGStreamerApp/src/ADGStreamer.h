@@ -16,9 +16,22 @@ public:
         int priority = 0, int stackSize = 0);
     virtual ~ADGStreamer();
 
+    virtual asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
+
 protected:
 private:
     bool initializeGStreamer();
+
+    bool startPipeline();
+    bool stopPipeline();
+    bool createPipeline();
+
+    static GstFlowReturn onNewSampleCallback(
+        GstAppSink *sink, gpointer userData);
+    GstFlowReturn onNewSample();
+
+    GstElement *pipeline_;
+    GstElement *sink_;
 };
 
 #endif
