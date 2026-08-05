@@ -30,8 +30,17 @@ private:
         GstAppSink *sink, gpointer userData);
     GstFlowReturn onNewSample();
 
+    bool processSample(GstSample *sample);
+    bool updateSample(GstCaps *caps);
+
     GstElement *pipeline_;
     GstElement *sink_;
+
+    bool firstSample_;
+
+    int ndims_;
+    size_t dims_[3];
+    NDDataType_t dataType_;
 };
 
 #endif
