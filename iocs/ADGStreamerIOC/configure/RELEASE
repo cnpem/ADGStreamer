@@ -20,6 +20,7 @@
 # Variables may be used before their values have been set.
 # Build variables that are NOT used in paths should be set in
 # the CONFIG_SITE file.
+ADGSTREAMER = $(TOP)/../..
 
 # Variables and paths to dependent modules:
 #MODULES = /path/to/modules
@@ -39,4 +40,6 @@ EPICS_BASE = /opt/epics/base
 # without having to modify this file directly.
 -include $(TOP)/../RELEASE.local
 -include $(TOP)/../RELEASE.$(EPICS_HOST_ARCH).local
+-include $(TOP)/../../../configure/RELEASE_PRODS_INCLUDE
+-include $(TOP)/RELEASE.local
 -include $(TOP)/configure/RELEASE.local
