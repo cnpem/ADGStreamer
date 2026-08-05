@@ -20,6 +20,9 @@ public:
 
 protected:
 private:
+    static void acquisitionTaskC(void *drvPvt);
+    void acquisitionTask();
+
     bool initializeGStreamer();
 
     bool startPipeline();

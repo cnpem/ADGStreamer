@@ -8,6 +8,12 @@ ADGStreamer::ADGStreamer(const char *portName, int maxBuffers, size_t maxMemory,
           priority, stackSize)
 {
     initializeGStreamer();
+
+    epicsThreadCreate("ADGSTAcquire",
+                            epicsThreadPriorityMedium,
+                            epicsThreadGetStackSize(epicsThreadStackMedium),
+                            (EPICSTHREADFUNC)acquisitionTaskC,
+                            this);
 }
 
 ADGStreamer::~ADGStreamer() { stopPipeline(); }
@@ -25,6 +31,39 @@ asynStatus ADGStreamer::writeInt32(asynUser *pasynUser, epicsInt32 value)
     }
 
     return ADDriver::writeInt32(pasynUser, value);
+}
+
+void ADGStreamer::acquisitionTaskC(void *drvPvt)
+{
+    ADGStreamer *pPvt = static_cast<ADGStreamer *>(drvPvt);
+    pPvt->acquisitionTask();
+}
+
+void ADGStreamer::acquisitionTask()
+{
+    int acquire;
+    epicsTimeStamp startTime, endTime;
+    double elapsedTime, delay;
+
+    while (true)
+    {
+        epicsTimeGetCurrent(&startTime);
+
+        lock();
+        getIntegerParam(ADAcquire, &acquire);
+        if (acquire)
+        {
+        }
+        else
+        {
+        }
+        unlock();
+
+        epicsTimeGetCurrent(&endTime);
+        elapsedTime = epicsTimeDiffInSeconds(&endTime, &startTime);
+        delay = 0.1 - elapsedTime;
+        epicsThreadSleep(delay);
+    }
 }
 
 bool ADGStreamer::initializeGStreamer()
