@@ -9,6 +9,10 @@
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
 
+#include "PipelineBuilder.h"
+#include "PipelineBuilderRTSP.h"
+#include "PipelineTypes.h"
+
 class ADGStreamer : public ADDriver {
 
 public:
@@ -17,6 +21,8 @@ public:
     virtual ~ADGStreamer();
 
     virtual asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
+
+    bool pipelineBuilder(PipelineBuilder *builder);
 
 protected:
 private:

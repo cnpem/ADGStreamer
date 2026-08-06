@@ -14,7 +14,11 @@ ADGStreamer::ADGStreamer(const char *portName, int maxBuffers, size_t maxMemory,
         (EPICSTHREADFUNC)acquisitionTaskC, this);
 }
 
-ADGStreamer::~ADGStreamer() { stopPipeline(); }
+ADGStreamer::~ADGStreamer()
+{
+    stopPipeline();
+    delete pipelineBuilder_;
+}
 
 asynStatus ADGStreamer::writeInt32(asynUser *pasynUser, epicsInt32 value)
 {
@@ -29,6 +33,19 @@ asynStatus ADGStreamer::writeInt32(asynUser *pasynUser, epicsInt32 value)
     }
 
     return ADDriver::writeInt32(pasynUser, value);
+}
+
+bool ADGStreamer::pipelineBuilder(PipelineBuilder *builder)
+{
+    if (!builder)
+        return false;
+
+    if (pipelineBuilder_)
+        delete pipelineBuilder_;
+
+    pipelineBuilder_ = builder;
+
+    return true;
 }
 
 void ADGStreamer::acquisitionTaskC(void *drvPvt)
@@ -133,16 +150,11 @@ bool ADGStreamer::stopPipeline()
 
 bool ADGStreamer::createPipeline()
 {
-    std::string pipeline
-        = std::string("rtspsrc "
-                      "location=rtsp://admin:r00tr00t@10.20.21.40:554/cam/"
-                      "realmonitor?channel=1&subtype=0 protocols=udp latency=0 "
-                      "drop-on-latency=true")
-        + std::string(" ! rtph264depay ! h264parse config-interval=-1")
-        + std::string(
-            " ! queue max-size-buffers=1 leaky=downstream silent=true")
-        + std::string(" ! avdec_h264 ! videoconvert ! video/x-raw,format=RGB ! "
-                      "appsink name=appsink sync=false");
+    if (!pipelineBuilder_) {
+        return false;
+    }
+
+    std::string pipeline = pipelineBuilder_->build();
 
     GError *error = nullptr;
     pipeline_ = gst_parse_launch(pipeline.c_str(), &error);
@@ -401,9 +413,72 @@ static void ADGStreamerDriveCallFunc(const iocshArgBuf *args)
         args[0].sval, args[1].ival, args[2].ival, args[3].ival, args[4].ival);
 }
 
+extern "C" int ADGStreamerConfigureRTSP(const char *portName,
+    const char *username, const char *password, const char *host, int port,
+    const char *path, int protocol, int latency, int dropOnLatency, int codec)
+{
+    ADGStreamer *pDriver
+        = static_cast<ADGStreamer *>(findAsynPortDriver(portName));
+    if (!pDriver) {
+        printf("ADGStreamerConfigureRTSP: Port \"%s\" not found.\n", portName);
+        return asynError;
+    }
+
+    PipelineBuilderRTSP *builder = new PipelineBuilderRTSP();
+
+    builder->setAuthentication(username, password);
+    builder->setHost(host, port, path);
+    builder->setProtocol(static_cast<ProtocolType>(protocol));
+    builder->setLatency(latency);
+    builder->setDropOnLatency(dropOnLatency);
+    builder->setCodec(static_cast<CodecType>(codec));
+
+    if (!pDriver->pipelineBuilder(builder)) {
+        return asynError;
+    }
+
+    return asynSuccess;
+}
+
+static const iocshArg ADGStreamerConfigureRTSPArg0
+    = { "Port name", iocshArgString };
+static const iocshArg ADGStreamerConfigureRTSPArg1
+    = { "Username", iocshArgString };
+static const iocshArg ADGStreamerConfigureRTSPArg2
+    = { "Password", iocshArgString };
+static const iocshArg ADGStreamerConfigureRTSPArg3 = { "Host", iocshArgString };
+static const iocshArg ADGStreamerConfigureRTSPArg4 = { "Port", iocshArgInt };
+static const iocshArg ADGStreamerConfigureRTSPArg5 = { "Path", iocshArgString };
+static const iocshArg ADGStreamerConfigureRTSPArg6
+    = { "Protocol", iocshArgInt };
+static const iocshArg ADGStreamerConfigureRTSPArg7
+    = { "Latency (ms)", iocshArgInt };
+static const iocshArg ADGStreamerConfigureRTSPArg8
+    = { "Drop on latency", iocshArgInt };
+static const iocshArg ADGStreamerConfigureRTSPArg9 = { "Codec", iocshArgInt };
+
+static const iocshArg *const ADGStreamerConfigureRTSPArgs[]
+    = { &ADGStreamerConfigureRTSPArg0, &ADGStreamerConfigureRTSPArg1,
+          &ADGStreamerConfigureRTSPArg2, &ADGStreamerConfigureRTSPArg3,
+          &ADGStreamerConfigureRTSPArg4, &ADGStreamerConfigureRTSPArg5,
+          &ADGStreamerConfigureRTSPArg6, &ADGStreamerConfigureRTSPArg7,
+          &ADGStreamerConfigureRTSPArg8, &ADGStreamerConfigureRTSPArg9 };
+
+static const iocshFuncDef ADGStreamerConfigureRTSPFuncDef
+    = { "ADGStreamerConfigureRTSP", 10, ADGStreamerConfigureRTSPArgs };
+
+static void ADGStreamerConfigureRTSPCallFunc(const iocshArgBuf *args)
+{
+    ADGStreamerConfigureRTSP(args[0].sval, args[1].sval, args[2].sval,
+        args[3].sval, args[4].ival, args[5].sval, args[6].ival, args[7].ival,
+        args[8].ival, args[9].ival);
+}
+
 static void ADGStreamerRegister()
 {
     iocshRegister(&ADGStreamerDriveFuncDef, ADGStreamerDriveCallFunc);
+    iocshRegister(
+        &ADGStreamerConfigureRTSPFuncDef, ADGStreamerConfigureRTSPCallFunc);
 }
 
 epicsExportRegistrar(ADGStreamerRegister);

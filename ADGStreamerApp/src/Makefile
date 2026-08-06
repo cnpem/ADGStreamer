@@ -18,6 +18,8 @@ DBD += ADGStreamer.dbd
 # specify all source files to be compiled and added to the library
 #ADGStreamer_SRCS += xxx
 ADGStreamer_SRCS += ADGStreamer.cpp
+ADGStreamer_SRCS += PipelineBuilder.cpp
+ADGStreamer_SRCS += PipelineBuilderRTSP.cpp
 
 USR_CXXFLAGS += $(shell pkg-config --cflags gstreamer-1.0)
 ADGStreamer_SYS_LIBS += gstapp-1.0
