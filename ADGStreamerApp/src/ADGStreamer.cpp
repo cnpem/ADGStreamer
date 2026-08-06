@@ -10,6 +10,7 @@ ADGStreamer::ADGStreamer(const char *portName, int maxBuffers, size_t maxMemory,
     createParam(ADGSTPipelineBuilder, asynParamOctet, &GST_PipelineBuilder);
 
     initializeGStreamer();
+    reportStatus("GStreamer initialized", ADStatusIdle);
 
     epicsThreadCreate("ADGSTAcquire", epicsThreadPriorityMedium,
         epicsThreadGetStackSize(epicsThreadStackMedium),
@@ -48,6 +49,13 @@ bool ADGStreamer::pipelineBuilder(PipelineBuilder *builder)
     pipelineBuilder_ = builder;
 
     return true;
+}
+
+void ADGStreamer::reportStatus(const char *message, ADStatus_t status)
+{
+    setStringParam(ADStatusMessage, message);
+    setIntegerParam(ADStatus, status);
+    callParamCallbacks();
 }
 
 void ADGStreamer::acquisitionTaskC(void *drvPvt)
@@ -91,6 +99,8 @@ bool ADGStreamer::startPipeline()
         return false;
     }
 
+    reportStatus("Starting pipeline", ADStatusInitializing);
+
     if (!createPipeline()) {
         return false;
     }
@@ -101,6 +111,7 @@ bool ADGStreamer::startPipeline()
     ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
 
     if (ret == GST_STATE_CHANGE_FAILURE) {
+        reportStatus("Could not start GStreamer pipeline", ADStatusError);
         return false;
     }
 
@@ -108,19 +119,24 @@ bool ADGStreamer::startPipeline()
     gst_element_get_state(pipeline_, &state, nullptr, GST_CLOCK_TIME_NONE);
 
     if (state != GST_STATE_PLAYING) {
+        reportStatus("Could not start GStreamer pipeline", ADStatusError);
         return false;
     }
+
+    reportStatus("Pipeline started", ADStatusAcquire);
 
     return true;
 }
 
 bool ADGStreamer::stopPipeline()
 {
+    reportStatus("Stopping pipeline", ADStatusAborting);
     if (pipeline_) {
         GstStateChangeReturn ret;
         ret = gst_element_set_state(pipeline_, GST_STATE_NULL);
 
         if (ret == GST_STATE_CHANGE_FAILURE) {
+            reportStatus("Failed to stop pipeline", ADStatusError);
             return false;
         }
 
@@ -128,6 +144,7 @@ bool ADGStreamer::stopPipeline()
         gst_element_get_state(pipeline_, &state, nullptr, GST_CLOCK_TIME_NONE);
 
         if (state != GST_STATE_NULL) {
+            reportStatus("Failed to stop pipeline", ADStatusError);
             return false;
         }
     }
@@ -147,14 +164,19 @@ bool ADGStreamer::stopPipeline()
         pipeline_ = nullptr;
     }
 
+    reportStatus("Pipeline stopped", ADStatusIdle);
+
     return true;
 }
 
 bool ADGStreamer::createPipeline()
 {
     if (!pipelineBuilder_) {
+        reportStatus("Pipeline builder not configured", ADStatusError);
         return false;
     }
+
+    reportStatus("Creating pipeline", ADStatusInitializing);
 
     std::string pipeline = pipelineBuilder_->build();
 
@@ -165,22 +187,27 @@ bool ADGStreamer::createPipeline()
     pipeline_ = gst_parse_launch(pipeline.c_str(), &error);
 
     if (!pipeline_) {
-        if (error) { }
+        if (error) {
+            reportStatus(error->message, ADStatusError);
+        }
         return false;
     }
 
     if (error) {
+        reportStatus(error->message, ADStatusError);
         return false;
     }
 
     bus_ = gst_element_get_bus(pipeline_);
     if (!bus_) {
+        reportStatus("Could not create pipeline bus", ADStatusError);
         return false;
     }
 
     sink_ = gst_bin_get_by_name(GST_BIN(pipeline_), "appsink");
 
     if (!sink_) {
+        reportStatus("Could not find appsink", ADStatusError);
         return false;
     }
 
@@ -190,6 +217,8 @@ bool ADGStreamer::createPipeline()
 
     g_signal_connect(
         sink_, "new-sample", G_CALLBACK(onNewSampleCallback), this);
+
+    reportStatus("Pipeline created", ADStatusIdle);
 
     return true;
 }
@@ -360,6 +389,7 @@ bool ADGStreamer::processBusMessage()
             gchar *debug = nullptr;
             gst_message_parse_error(message, &error, &debug);
             if (error) {
+                reportStatus(error->message, ADStatusError);
                 g_error_free(error);
             }
             if (debug) {
@@ -369,6 +399,7 @@ bool ADGStreamer::processBusMessage()
         }
 
         case GST_MESSAGE_EOS: {
+            reportStatus("End of stream", ADStatusIdle);
             break;
         }
 
@@ -379,6 +410,14 @@ bool ADGStreamer::processBusMessage()
                 GstState pendingState;
                 gst_message_parse_state_changed(
                     message, &oldState, &newState, &pendingState);
+
+                if (newState == GST_STATE_READY) {
+                    reportStatus("Pipeline ready", ADStatusIdle);
+                } else if (newState == GST_STATE_PAUSED) {
+                    reportStatus("Pipeline paused", ADStatusWaiting);
+                } else if (newState == GST_STATE_PLAYING) {
+                    reportStatus("Pipeline started", ADStatusAcquire);
+                }
             }
 
             break;

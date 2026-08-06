@@ -25,6 +25,7 @@ public:
     virtual asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
 
     bool pipelineBuilder(PipelineBuilder *builder);
+    void reportStatus(const char *message, ADStatus_t status);
 
 protected:
     int GST_PipelineBuilder;
