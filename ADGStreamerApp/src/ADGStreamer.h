@@ -13,6 +13,8 @@
 #include "PipelineBuilderRTSP.h"
 #include "PipelineTypes.h"
 
+#define ADGSTPipelineBuilder "GST_PIPELINE_STRING"
+
 class ADGStreamer : public ADDriver {
 
 public:
@@ -25,6 +27,8 @@ public:
     bool pipelineBuilder(PipelineBuilder *builder);
 
 protected:
+    int GST_PipelineBuilder;
+
 private:
     static void acquisitionTaskC(void *drvPvt);
     void acquisitionTask();

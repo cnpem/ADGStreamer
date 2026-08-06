@@ -7,6 +7,8 @@ ADGStreamer::ADGStreamer(const char *portName, int maxBuffers, size_t maxMemory,
     : ADDriver(portName, 1, 1, maxBuffers, maxMemory, 0, 0, ASYN_CANBLOCK, 1,
           priority, stackSize)
 {
+    createParam(ADGSTPipelineBuilder, asynParamOctet, &GST_PipelineBuilder);
+
     initializeGStreamer();
 
     epicsThreadCreate("ADGSTAcquire", epicsThreadPriorityMedium,
@@ -155,6 +157,9 @@ bool ADGStreamer::createPipeline()
     }
 
     std::string pipeline = pipelineBuilder_->build();
+
+    setStringParam(GST_PipelineBuilder, pipeline.c_str());
+    callParamCallbacks();
 
     GError *error = nullptr;
     pipeline_ = gst_parse_launch(pipeline.c_str(), &error);
