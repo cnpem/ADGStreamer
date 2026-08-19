@@ -1,0 +1,11 @@
+include "ADBase.template"
+
+record(waveform, "$(P)$(R)PipelineBuilder_RBV")
+{
+    field(DESC, "Current GStreamer pipeline")
+    field(DTYP, "asynOctetRead")
+    field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))GST_PIPELINE_STRING")
+    field(FTVL, "CHAR")
+    field(NELM, "1024")
+    field(SCAN, "I/O Intr")
+}

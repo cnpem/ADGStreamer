@@ -39,4 +39,6 @@ EPICS_BASE = /opt/epics/base
 # without having to modify this file directly.
 -include $(TOP)/../RELEASE.local
 -include $(TOP)/../RELEASE.$(EPICS_HOST_ARCH).local
+-include $(TOP)/../configure/RELEASE_LIBS_INCLUDE
+-include $(TOP)/RELEASE.local
 -include $(TOP)/configure/RELEASE.local
